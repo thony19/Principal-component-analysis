@@ -1,0 +1,274 @@
+---
+title: "Análisis de Componentes Principales"
+author: ""
+date: "2/8/2022"
+output:
+  html_document:
+    css: style.css
+  pdf_document: default
+editor_options:
+  chunk_output_type: console
+---
+
+
+## Ejemplo cálculo directo de PCA con R
+
+El set de datos `USArrests` del paquete básico de `R` contiene el porcentaje de asaltos ($Assault$), asesinatos ($Murder$) y secuestros ($Rape$) por cada 100,000 habitantes para cada uno de los 50 estados de USA (1973). Además, también incluye el porcentaje de la población de cada estado que vive en zonas rurales ($UrbanPoP$).
+
+
+```{r }
+data("USArrests")
+head(USArrests)
+```
+
+El promedio de los datos muestra que hay tres veces más secuestros que asesinatos y 8 veces más asaltos que secuestros.
+
+```{r}
+apply(X = USArrests, MARGIN = 2, FUN = mean)
+```
+
+La varianza es muy distinta entre las variables, en el caso de Assault, la varianza es varios órdenes de magnitud superior al resto.
+
+```{r}
+apply(X = USArrests, MARGIN = 2, FUN = var)
+```
+
+Si no se estandarizan las variables para que tengan media cero y desviación estándar 1 antes de realizar el estudio $\textbf{PCA}$, la variable Assault dominará la mayoría de las componentes principales.
+
+La función `prcomp()` es una de las múltiples funciones en `R` que realizan $\textbf{PCA}$. Por defecto, `prcomp()` centra las variables para que tengan media cero, pero si se quiere además que su desviación estándar sea de uno, hay que indicar `scale = TRUE`.
+
+```{r}
+pca <- prcomp(USArrests, scale = TRUE)
+names(pca)
+```
+
+
+Los elementos `center` y `scale` almacenados en el objeto `pca` contienen la media y desviación típica de las variables previa estandarización (en la escala original).
+
+```{r}
+pca$center
+```
+
+```{r}
+pca$scale
+```
+
+`rotation` contiene el valor de los loadings $\phi$ para cada componente ($eigenvector$). El número máximo de componentes principales se corresponde con el $mínimo(n-1,p)$, que en este caso es $min(49,4)=4$.
+
+```{r}
+pca$rotation
+```
+
+Analizar con detalle el vector de $loadings$ que forma cada componente puede ayudar a interpretar que tipo de información recoge cada una de ellas. Por ejemplo, la primera componente es el resultado de la siguiente combinación lineal de las variables originales:
+
+$$PC1=−0.5358995 Murder−0.5831836 Assault−0.2781909 UrbanPop−0.5434321 Rape$$
+
+Los pesos asignados en la primera componente a las variables $Assault$, $Murder$ y $Rape$ son aproximadamente iguales entre ellos y bastante superiores al asignado a $UrbanPoP$, esto significa que la primera componente recoge mayoritariamente la información correspondiente a los delitos. En la segunda componente, es la variable $UrbanPoP$ la que tiene con diferencia mayor peso, por lo que se corresponde principalmente con el nivel de urbanización del estado. Si bien en este ejemplo la interpretación de las componentes es bastante clara, no en todos los casos ocurre lo mismo.
+
+La función `prcomp()` calcula automáticamente el valor de las componentes principales para cada observación ($principal\,\, component\,\, scores$) multiplicando los datos por los vectores de $loadings$. El resultado se almacena en la matriz $x$.
+
+```{r}
+head(pca$x)
+```
+
+```{r}
+dim(pca$x)
+```
+
+
+Mediante la función `biplot()` se puede obtener una representación bidimensional de las dos primeras componentes. Es recomendable indicar el argumento `scale = 0` para que las flechas estén en la misma escala que las componentes.
+
+```{r}
+biplot(x = pca, scale = 0, cex = 0.6, col = c("blue4", "brown3"))
+```
+
+La imagen especular, cuya interpretación es equivalente, se puede obtener invirtiendo el signo de los loadings y de los principal component scores.
+
+```{r}
+pca$rotation <- -pca$rotation
+pca$x        <- -pca$x
+biplot(x = pca, scale = 0, cex = 0.6, col = c("blue4", "brown3"))
+```
+
+
+Una vez calculadas las componentes principales, se puede conocer la varianza explicada por cada una de ellas, la proporción respecto al total y la proporción de varianza acumulada.
+
+
+```{r}
+library(ggplot2)
+pca$sdev^2
+```
+
+
+```{r}
+prop_varianza <- pca$sdev^2 / sum(pca$sdev^2)
+prop_varianza
+```
+
+```{r}
+ggplot(data = data.frame(prop_varianza, pc = 1:4),
+       aes(x = pc, y = prop_varianza)) +
+  geom_col(width = 0.3) +
+  scale_y_continuous(limits = c(0,1)) +
+  theme_bw() +
+  labs(x = "Componente principal",
+       y = "Prop. de varianza explicada")
+```
+
+```{r}
+prop_varianza_acum <- cumsum(prop_varianza)
+prop_varianza_acum
+```
+
+```{r}
+ggplot(data = data.frame(prop_varianza_acum, pc = 1:4),
+       aes(x = pc, y = prop_varianza_acum, group = 1)) +
+  geom_point() +
+  geom_line() +
+  theme_bw() +
+  labs(x = "Componente principal",
+       y = "Prop. varianza explicada acumulada")
+```
+
+
+
+En este caso, la primera componente explica el 62$\%$ de la varianza observada en los datos y la segunda el 24.7$\%$. Las dos últimas componentes no superan por separado el 1$\%$ de varianza explicada. Si se empleasen únicamente las dos primeras componentes se conseguiría explicar el 86.75$\%$ de la varianza observada.
+
+
+## PCR: PCA aplicado a regresión linea
+
+La cuantificación del contenido en grasa de la carne pude hacerse mediante técnicas de analítica química, sin embargo, este proceso es costoso en tiempo y recursos. Una posible alternativa para reducir costes y optimizar tiempo es emplear un espectrofotómetro (instrumento capaz de detectar la absorbancia que tiene un material a diferentes tipos de luz en función de sus características). Para comprobar su efectividad se mide el espectro de absorbancia de 100 longitudes de onda en 215 muestras de carne, cuyo contenido en grasa se obtiene también por análisis químico para poder comparar los resultados. El set de datos `meatspec` del paquete `faraway` contiene toda la información.
+
+```{r}
+library(faraway)
+data(meatspec)
+dim(meatspec)
+```
+
+
+El set de datos contiene 101 columnas. Las 100 primeras, nombradas como $v_1, ..., v_{100}$ recogen el valor de absorbancia para cada una de las 100 longitudes de onda analizadas, y la columna fat el contenido en grasa medido por técnicas químicas.
+
+Para poder evaluar la capacidad predictiva del modelo, se dividen las observaciones disponibles en dos grupos: uno de entrenamiento para ajustar el modelo (80$\%$ de los datos) y uno de test (20$\%$ de los datos).
+
+```{r}
+training <- meatspec[1:172, ]
+test     <- meatspec[173:215, ]
+```
+
+En primer lugar se ajusta un modelo incluyendo todas las longitudes de onda como predictores.
+
+```{r}
+modelo <- lm(fat ~ ., data = training)
+summary(modelo)
+```
+
+El valor $R^2_{ajustado}$  obtenido es muy alto (0.9928) lo que indica que el modelo es capaz de predecir con gran exactitud el contenido en grasa de las observaciones con las que se ha entrenado. El hecho de que el modelo en conjunto sea significativo (p-value: < 2.2$e^{-16}$), pero que muy pocos de los predictores lo sean a nivel individual, es un indicativo de una posible redundancia entre los predictores (colinealidad).
+
+¿Cómo de bueno es el modelo prediciendo nuevas observaciones que no han participado en ajuste? Al tratarse de un modelo de regresión, la estimación del error de predicción se obtiene mediante el $Mean\,\, Square\,\, Error\,\, (MSE)$.
+
+$$MSE = \frac{1}{2} \displaystyle\sum^n_{i=1} (\hat{y_i} - y_i)^2$$
+
+```{r}
+# MSE empleando las observaciones de entrenamiento
+training_mse <- mean((modelo$fitted.values - training$fat)^2)
+training_mse
+```
+
+
+```{r}
+# MSE empleando nuevas observaciones
+predicciones <- predict(modelo, newdata = test)
+test_mse <- mean((predicciones - test$fat)^2)
+test_mse
+```
+
+Se observa que el modelo tiene un MSE muy bajo (0.48) cuando predice las mismas observaciones con las que se ha entrenado, pero 30 veces más alto (14.54) al predecir nuevas observaciones. Esto significa que el modelo no es útil, ya que el objetivo es aplicarlo para predecir el contenido en grasa de futuras muestras de carne. A este problema se le conoce como $overfitting$. Una de las causas por las que un modelo puede sufrir $overfitting$ es la incorporación de predictores innecesarios, que no aportan información o que la información que aportan es redundante.
+
+Se recurre en primer lugar a la selección de predictores mediante $stepwise$ selection empleando el AIC como criterio de evaluación:
+
+```{r}
+modelo_step_selection <- step(object = modelo, trace = FALSE)
+
+# Número de predictores del modelo resultante
+length(modelo_step_selection$coefficients)
+```
+
+```{r}
+# Training-MSE
+training_mse <- mean((modelo_step_selection$fitted.values - training$fat)^2)
+training_mse
+```
+
+El proceso de $stepwise$ selection devuelve como mejor modelo el formado por 73 de los 100 predictores disponibles. Al haber eliminado predictores del modelo, el $training\,\, MSE$ siempre aumenta, en este caso de 0.48 a 0.05, pero el $test-MSE$ se ha reducido a 12.88986.
+
+Véase ahora el resultado si se ajusta el modelo empleando las componentes principales:
+
+```{r}
+# Cálculo de componentes principales. Se excluye la columna con la variable 
+# respuesta *fat*
+pca <- prcomp(training[, -101], scale. = TRUE)
+
+# Se muestra la proporción de varianza explicada y acumulada de las 9 primeras
+# componentes
+summary(pca)$importance[, 1:9]
+```
+
+
+El estudio de la proporción de varianza explicada muestra que la primera componente recoge la mayor parte de la información (98.5$\%$), decayendo drásticamente la varianza en las sucesivas componentes.
+
+Una vez obtenido el valor de las componentes para cada observación ($principal\,\, component\,\, scores$), puede ajustarse el modelo lineal empleando dichos valores junto con la variable respuesta que le corresponde a cada observación. Con la función `pcr()` del paquete `pls` se evita tener que codificar cada uno de los pasos intermedios.
+
+Acorde a la proporción de varianza acumulada, emplear las 4 primeras componentes podría ser una buena elección, ya que en conjunto explican el 99.99100 $\%$ de varianza.
+
+```{r}
+library(pls)
+modelo_pcr <- pcr(formula = fat ~ ., data = training, scale. = TRUE, ncomp = 4)
+
+# Test-MSE
+predicciones <- predict(modelo_pcr, newdata = test, ncomp = 4)
+test_mse <- mean((predicciones - test$fat)^2)
+test_mse
+```
+
+El $test-MSE$ obtenido (20.56) para el modelo que emplea como predictores las 4 primeras componentes es mucho mayor que el obtenido con el modelo generado por $stepwise$ selection (12.89) e incluso que el obtenido incluyendo todos los predictores (14.54659). Esto significa que, o bien el hecho de emplear componentes principales como predictores no es útil para este caso, o que el número de componentes incluido no es el adecuado.
+
+La función `pcr()` incluye la posibilidad de recurrir a $cross\,\, validation$ para identificar el número óptimo de componentes con el que se minimiza el MSE.
+
+```{r}
+set.seed(123)
+modelo_pcr <- pcr(formula = fat ~ ., data = training, scale. = TRUE,
+                  validation = "CV")
+modelo_pcr_CV <- MSEP(modelo_pcr, estimate = "CV")
+which.min(modelo_pcr_CV$val)
+```
+
+
+```{r}
+par(mfrow = c(1,2))
+plot(modelo_pcr_CV$val, main = "MSE vs nº componentes", type = "l",
+     ylab = "MSE",
+     col = "blue", xlab = "Componentes")
+plot(modelo_pcr_CV$val, main = "zoom", type = "l", ylab = "MSE",
+     xlab = "Componentes", col = "blue", ylim = c(0,20))
+```
+
+```{r}
+# Test-MSE
+predicciones <- predict(modelo_pcr, newdata = test, ncomp = 18)
+test_mse <- mean((predicciones - test$fat)^2)
+test_mse
+```
+
+El número óptimo de componentes principales identificado por $cross\,\, validation$ es de 18. Empleando este número en la $PCR$ se consigue reducir el $test-MSE$ a 4.52, un valor muy por debajo del conseguido con los otros modelos.
+
+
+
+
+
+
+
+
+
+
+
+
