@@ -1,6 +1,6 @@
 ---
 title: "Análisis de Componentes Principales"
-author: ""
+author: "Grupo I"
 date: "2/8/2022"
 output:
   html_document:
